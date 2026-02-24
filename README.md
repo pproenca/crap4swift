@@ -80,6 +80,10 @@ simpleFunction()               Sources/Utils.swift:10         1  100.0%      1.0
 | 5 | 0% | 30.0 |
 | 8 | 45% | ~18.65 |
 
+## Credits
+
+Based on the CRAP metric concept by [Alberto Savoia](http://www.artima.com/weblogs/viewpost.jsp?thread=210575) and directly inspired by [Robert C. Martin](https://github.com/unclebob) (Uncle Bob)'s [crap4clj](https://github.com/unclebob/crap4clj) — a Clojure implementation of the same metric.
+
 ## License
 
 MIT
