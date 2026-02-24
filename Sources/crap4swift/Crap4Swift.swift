@@ -67,7 +67,7 @@ struct Crap4Swift: ParsableCommand {
                     forFile: absolutePath,
                     startLine: funcInfo.startLine,
                     endLine: funcInfo.endLine
-                ) ?? 0.0
+                ) ?? 100.0
 
                 let score = crapScore(complexity: cc, coveragePercent: cov)
                 entries.append(CrapEntry(
