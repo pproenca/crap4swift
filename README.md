@@ -11,6 +11,12 @@ Uses **SwiftSyntax** for accurate AST-based cyclomatic complexity analysis — n
 ## Install
 
 ```bash
+brew install pproenca/tap/crap4swift
+```
+
+Or build from source:
+
+```bash
 git clone https://github.com/pproenca/crap4swift.git
 cd crap4swift
 swift build -c release
