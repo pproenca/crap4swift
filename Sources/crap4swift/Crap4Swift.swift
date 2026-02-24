@@ -27,11 +27,17 @@ struct Crap4Swift: ParsableCommand {
     @Option(name: .long, help: "Filter by function name pattern (repeatable)")
     var filter: [String] = []
 
+    @Option(name: .long, help: "Exclude files whose path contains this substring (repeatable)")
+    var excludePath: [String] = []
+
+    @Flag(name: .long, help: "Exclude common generated file paths (.build, GeneratedSources, Generated, Sourcery)")
+    var excludeGenerated: Bool = false
+
     @Flag(name: .long, help: "Output as JSON")
     var json: Bool = false
 
     mutating func run() throws {
-        let swiftFiles = findSwiftFiles(in: sourceDir)
+        let swiftFiles = findSwiftFiles(in: sourceDir, excluding: exclusionPatterns())
         guard !swiftFiles.isEmpty else {
             print("No .swift files found in '\(sourceDir)'")
             return
@@ -102,18 +108,54 @@ struct Crap4Swift: ParsableCommand {
         }
     }
 
-    private func findSwiftFiles(in directory: String) -> [String] {
+    private func exclusionPatterns() -> [String] {
+        var patterns = excludePath
+        if excludeGenerated {
+            patterns.append(contentsOf: [
+                "/.build/",
+                "/GeneratedSources/",
+                "/Generated/",
+                "/DerivedSources/",
+                "/Sourcery/",
+                ".generated.swift",
+                "GeneratedTypes.swift",
+            ])
+        }
+        return patterns.map { $0.lowercased() }
+    }
+
+    private func findSwiftFiles(in directory: String, excluding patterns: [String]) -> [String] {
         let fm = FileManager.default
         let url = URL(fileURLWithPath: directory).standardizedFileURL
-        guard let enumerator = fm.enumerator(at: url, includingPropertiesForKeys: nil) else {
+        guard let enumerator = fm.enumerator(
+            at: url,
+            includingPropertiesForKeys: [.isDirectoryKey],
+            options: [.skipsPackageDescendants, .skipsHiddenFiles]
+        ) else {
             return []
         }
+
         var files: [String] = []
         for case let fileURL as URL in enumerator {
+            let path = fileURL.path
+            let lowercasedPath = path.lowercased()
+
+            if shouldExclude(lowercasedPath: lowercasedPath, patterns: patterns) {
+                let isDirectory = (try? fileURL.resourceValues(forKeys: [.isDirectoryKey]))?.isDirectory == true
+                if isDirectory {
+                    enumerator.skipDescendants()
+                }
+                continue
+            }
+
             if fileURL.pathExtension == "swift" {
-                files.append(fileURL.path)
+                files.append(path)
             }
         }
         return files.sorted()
+    }
+
+    private func shouldExclude(lowercasedPath: String, patterns: [String]) -> Bool {
+        patterns.contains { lowercasedPath.contains($0) }
     }
 }

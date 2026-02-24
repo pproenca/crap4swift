@@ -42,6 +42,12 @@ crap4swift --source-dir Sources --threshold 30
 
 # Filter by function name
 crap4swift --source-dir Sources --filter "viewDidLoad"
+
+# Exclude generated paths
+crap4swift --source-dir Sources --exclude-generated
+
+# Exclude custom path patterns (repeatable)
+crap4swift --source-dir Sources --exclude-path "/GeneratedSources/" --exclude-path "GeneratedTypes.swift"
 ```
 
 ## Example Output
