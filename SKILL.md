@@ -34,23 +34,23 @@ swift test --enable-code-coverage
 ### Run CRAP analysis
 
 ```bash
-# Analyze source directory (defaults to "Sources")
-crap4swift --source-dir Sources/MyApp
+# Analyze current directory (whole codebase)
+crap4swift
 
 # With xcresult coverage
-crap4swift --source-dir Sources --xcresult tests.xcresult
+crap4swift . --xcresult tests.xcresult
 
 # With llvm-cov coverage (from swift test --enable-code-coverage)
-crap4swift --source-dir Sources --profdata default.profdata --binary .build/debug/MyAppPackageTests.xctest
+crap4swift . --profdata default.profdata --binary .build/debug/MyAppPackageTests.xctest
 
 # JSON output
-crap4swift --source-dir Sources --json
+crap4swift . --json
 
 # Filter by CRAP score threshold
-crap4swift --source-dir Sources --threshold 30
+crap4swift . --threshold 30
 
 # Filter by function name
-crap4swift --source-dir Sources --filter "viewDidLoad"
+crap4swift . --filter "viewDidLoad"
 ```
 
 ### Output

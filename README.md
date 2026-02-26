@@ -25,29 +25,32 @@ swift build -c release
 ## Usage
 
 ```bash
-# Analyze source directory (defaults to "Sources")
-crap4swift --source-dir Sources/MyApp
+# Analyze current directory (whole codebase)
+crap4swift
 
 # With xcresult coverage
-crap4swift --source-dir Sources --xcresult .build/tests.xcresult
+crap4swift . --xcresult .build/tests.xcresult
 
 # With llvm-cov coverage
-crap4swift --source-dir Sources --profdata default.profdata --binary .build/debug/MyApp
+crap4swift . --profdata default.profdata --binary .build/debug/MyApp
 
 # JSON output
-crap4swift --source-dir Sources --json
+crap4swift . --json
 
 # Filter by threshold
-crap4swift --source-dir Sources --threshold 30
+crap4swift . --threshold 30
 
 # Filter by function name
-crap4swift --source-dir Sources --filter "viewDidLoad"
+crap4swift . --filter "viewDidLoad"
 
 # Exclude generated paths
-crap4swift --source-dir Sources --exclude-generated
+crap4swift . --exclude-generated
 
 # Exclude custom path patterns (repeatable)
-crap4swift --source-dir Sources --exclude-path "/GeneratedSources/" --exclude-path "GeneratedTypes.swift"
+crap4swift . --exclude-path "/GeneratedSources/" --exclude-path "GeneratedTypes.swift"
+
+# Analyze multiple directories
+crap4swift Sources Tests
 ```
 
 ## Example Output
