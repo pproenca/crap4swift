@@ -134,6 +134,12 @@ final class XCResultProvider: CoverageProvider {
             return functionCoverage
         }
 
+        // When xccov includes function-level entries for this file but none match the
+        // requested range, treat that range as uncovered rather than using file average.
+        guard indexedFile.functions.isEmpty else {
+            return 0.0
+        }
+
         return indexedFile.fileCoveragePercent
     }
 

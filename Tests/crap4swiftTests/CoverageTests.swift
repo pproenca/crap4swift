@@ -45,6 +45,44 @@ final class CoverageTests: XCTestCase {
         XCTAssertEqual(cov, 65.0)
     }
 
+    func testXCResultMissingFunctionEntryInFunctionIndexedFileDefaultsToZero() {
+        let report = XCResultProvider.XCCovReport(
+            targets: [
+                .init(files: [
+                    .init(
+                        path: "/project/Sources/MyApp/Logic.swift",
+                        lineCoverage: 0.65,
+                        functions: [
+                            .init(name: "covered()", lineCoverage: 1.0, lineNumber: 10, executionCount: 3),
+                        ]
+                    )
+                ])
+            ]
+        )
+        let provider = XCResultProvider(report: report)
+
+        let cov = provider.coverage(forFile: "/project/Sources/MyApp/Logic.swift", startLine: 30, endLine: 40)
+        XCTAssertEqual(cov, 0.0)
+    }
+
+    func testXCResultFileWithNoCoverageReturnsZero() {
+        let report = XCResultProvider.XCCovReport(
+            targets: [
+                .init(files: [
+                    .init(
+                        path: "/project/Sources/MyApp/Untested.swift",
+                        lineCoverage: 0.0,
+                        functions: nil
+                    )
+                ])
+            ]
+        )
+        let provider = XCResultProvider(report: report)
+
+        let cov = provider.coverage(forFile: "/project/Sources/MyApp/Untested.swift", startLine: 1, endLine: 50)
+        XCTAssertEqual(cov, 0.0)
+    }
+
     func testXCResultNoMatch() {
         let report = XCResultProvider.XCCovReport(
             targets: [
