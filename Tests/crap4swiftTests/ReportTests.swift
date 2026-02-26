@@ -5,7 +5,7 @@ final class ReportTests: XCTestCase {
 
     func testTableFormatContainsHeader() {
         let entries = [
-            CrapEntry(name: "foo()", file: "Sources/A.swift", line: 1, complexity: 1, coverage: 100.0, crap: 1.0),
+            makeEntry(name: "foo()", file: "Sources/A.swift", line: 1, complexity: 1, coverage: 100.0, crap: 1.0)
         ]
         let table = formatTable(entries)
         XCTAssertTrue(table.contains("CRAP Report"))
@@ -17,7 +17,7 @@ final class ReportTests: XCTestCase {
 
     func testTableFormatContainsFunctions() {
         let entries = [
-            CrapEntry(name: "foo()", file: "Sources/A.swift", line: 1, complexity: 5, coverage: 80.0, crap: 5.04),
+            makeEntry(name: "foo()", file: "Sources/A.swift", line: 1, complexity: 5, coverage: 80.0, crap: 5.04)
         ]
         let table = formatTable(entries)
         XCTAssertTrue(table.contains("foo()"))
@@ -27,9 +27,9 @@ final class ReportTests: XCTestCase {
 
     func testDescendingSort() {
         var entries = [
-            CrapEntry(name: "low()", file: "A.swift", line: 1, complexity: 1, coverage: 100.0, crap: 1.0),
-            CrapEntry(name: "high()", file: "B.swift", line: 1, complexity: 10, coverage: 0.0, crap: 110.0),
-            CrapEntry(name: "mid()", file: "C.swift", line: 1, complexity: 5, coverage: 50.0, crap: 20.625),
+            makeEntry(name: "low()", file: "A.swift", line: 1, complexity: 1, coverage: 100.0, crap: 1.0),
+            makeEntry(name: "high()", file: "B.swift", line: 1, complexity: 10, coverage: 0.0, crap: 110.0),
+            makeEntry(name: "mid()", file: "C.swift", line: 1, complexity: 5, coverage: 50.0, crap: 20.625),
         ]
         entries.sort { $0.crap > $1.crap }
 
@@ -40,9 +40,9 @@ final class ReportTests: XCTestCase {
 
     func testThresholdFiltering() {
         let entries = [
-            CrapEntry(name: "low()", file: "A.swift", line: 1, complexity: 1, coverage: 100.0, crap: 1.0),
-            CrapEntry(name: "high()", file: "B.swift", line: 1, complexity: 10, coverage: 0.0, crap: 110.0),
-            CrapEntry(name: "mid()", file: "C.swift", line: 1, complexity: 5, coverage: 50.0, crap: 20.625),
+            makeEntry(name: "low()", file: "A.swift", line: 1, complexity: 1, coverage: 100.0, crap: 1.0),
+            makeEntry(name: "high()", file: "B.swift", line: 1, complexity: 10, coverage: 0.0, crap: 110.0),
+            makeEntry(name: "mid()", file: "C.swift", line: 1, complexity: 5, coverage: 50.0, crap: 20.625),
         ]
         let threshold = 10.0
         let filtered = entries.filter { $0.crap >= threshold }
@@ -52,7 +52,7 @@ final class ReportTests: XCTestCase {
 
     func testJSONOutput() {
         let entries = [
-            CrapEntry(name: "foo()", file: "A.swift", line: 1, complexity: 3, coverage: 50.0, crap: 4.125),
+            makeEntry(name: "foo()", file: "A.swift", line: 1, complexity: 3, coverage: 50.0, crap: 4.125),
         ]
         let json = formatJSON(entries)
         XCTAssertTrue(json.contains("\"name\""))
@@ -64,5 +64,23 @@ final class ReportTests: XCTestCase {
     func testEmptyEntries() {
         let table = formatTable([])
         XCTAssertEqual(table, "No functions found.")
+    }
+
+    private func makeEntry(
+        name: String,
+        file: String,
+        line: Int,
+        complexity: Int,
+        coverage: Double,
+        crap: Double
+    ) -> CrapEntry {
+        CrapEntry(
+            name: name,
+            file: file,
+            line: line,
+            complexity: complexity,
+            coverage: coverage,
+            crap: crap
+        )
     }
 }

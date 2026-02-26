@@ -15,29 +15,24 @@ func formatTable(_ entries: [CrapEntry]) -> String {
     let covWidth = max(columns[3].count, 6)
     let crapWidth = max(columns[4].count, 8)
 
-    let totalWidth = nameWidth + fileWidth + ccWidth + covWidth + crapWidth + 8 // 8 for spacing
+    let widths = [nameWidth, fileWidth, ccWidth, covWidth, crapWidth]
+    let rightAlignedColumns: Set<Int> = [2, 3, 4]
+    let totalWidth = widths.reduce(0, +) + (2 * (widths.count - 1))
 
     var lines: [String] = [header, ""]
-    lines.append(
-        pad(columns[0], width: nameWidth) + "  " +
-        pad(columns[1], width: fileWidth) + "  " +
-        padLeft(columns[2], width: ccWidth) + "  " +
-        padLeft(columns[3], width: covWidth) + "  " +
-        padLeft(columns[4], width: crapWidth)
-    )
+    lines.append(makeTableRow(columns, widths: widths, rightAlignedColumns: rightAlignedColumns))
     lines.append(String(repeating: "-", count: totalWidth))
 
     for entry in entries {
         let fileLoc = formatFileLocation(entry)
         let covStr = String(format: "%.1f%%", entry.coverage)
         let crapStr = String(format: "%.1f", entry.crap)
-
         lines.append(
-            pad(entry.name, width: nameWidth) + "  " +
-            pad(fileLoc, width: fileWidth) + "  " +
-            padLeft("\(entry.complexity)", width: ccWidth) + "  " +
-            padLeft(covStr, width: covWidth) + "  " +
-            padLeft(crapStr, width: crapWidth)
+            makeTableRow(
+                [entry.name, fileLoc, "\(entry.complexity)", covStr, crapStr],
+                widths: widths,
+                rightAlignedColumns: rightAlignedColumns
+            )
         )
     }
 
@@ -56,6 +51,22 @@ func formatJSON(_ entries: [CrapEntry]) -> String {
 
 private func formatFileLocation(_ entry: CrapEntry) -> String {
     "\(entry.file):\(entry.line)"
+}
+
+private func makeTableRow(
+    _ values: [String],
+    widths: [Int],
+    rightAlignedColumns: Set<Int>
+) -> String {
+    values.enumerated()
+        .map { index, value in
+            let width = widths[index]
+            if rightAlignedColumns.contains(index) {
+                return padLeft(value, width: width)
+            }
+            return pad(value, width: width)
+        }
+        .joined(separator: "  ")
 }
 
 private func pad(_ string: String, width: Int) -> String {

@@ -30,44 +30,17 @@ final class Crap4SwiftCommandTests: XCTestCase {
     }
 
     func testResolvedCoverageDefaultsToHundredWithoutCoverageProvider() {
-        let command = Crap4Swift()
-
-        let coverage = command.resolvedCoverage(
-            forFile: "/tmp/File.swift",
-            startLine: 1,
-            endLine: 10,
-            using: nil
-        )
-
-        XCTAssertEqual(coverage, 100.0)
+        assertResolvedCoverage(using: nil, expected: 100.0, startLine: 1, endLine: 10)
     }
 
     func testResolvedCoverageDefaultsToZeroWhenProviderHasNoDataForFile() {
-        let command = Crap4Swift()
         let provider = StubCoverageProvider(coverage: nil)
-
-        let coverage = command.resolvedCoverage(
-            forFile: "/tmp/File.swift",
-            startLine: 10,
-            endLine: 20,
-            using: provider
-        )
-
-        XCTAssertEqual(coverage, 0.0)
+        assertResolvedCoverage(using: provider, expected: 0.0, startLine: 10, endLine: 20)
     }
 
     func testResolvedCoverageUsesProviderValueWhenAvailable() {
-        let command = Crap4Swift()
         let provider = StubCoverageProvider(coverage: 37.5)
-
-        let coverage = command.resolvedCoverage(
-            forFile: "/tmp/File.swift",
-            startLine: 10,
-            endLine: 20,
-            using: provider
-        )
-
-        XCTAssertEqual(coverage, 37.5)
+        assertResolvedCoverage(using: provider, expected: 37.5, startLine: 10, endLine: 20)
     }
 
     private func makeTemporaryDirectory() throws -> URL {
@@ -75,6 +48,22 @@ final class Crap4SwiftCommandTests: XCTestCase {
             .appendingPathComponent("crap4swift-tests-\(UUID().uuidString)", isDirectory: true)
         try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
         return tempDir
+    }
+
+    private func assertResolvedCoverage(
+        using provider: CoverageProvider?,
+        expected: Double,
+        startLine: Int,
+        endLine: Int
+    ) {
+        let command = Crap4Swift()
+        let coverage = command.resolvedCoverage(
+            forFile: "/tmp/File.swift",
+            startLine: startLine,
+            endLine: endLine,
+            using: provider
+        )
+        XCTAssertEqual(coverage, expected)
     }
 }
 

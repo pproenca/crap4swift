@@ -43,15 +43,7 @@ struct Crap4Swift: ParsableCommand {
             return
         }
 
-        // Set up coverage provider
-        let coverageProvider: CoverageProvider?
-        if let xcresultPath = xcresult {
-            coverageProvider = try XCResultProvider(path: xcresultPath)
-        } else if let profdataPath = profdata, let binaryPath = binary {
-            coverageProvider = try LLVMCovProvider(profdata: profdataPath, binary: binaryPath)
-        } else {
-            coverageProvider = nil
-        }
+        let coverageProvider = try makeCoverageProvider()
 
         var entries: [CrapEntry] = []
 
@@ -123,6 +115,18 @@ struct Crap4Swift: ParsableCommand {
             ])
         }
         return patterns.map { $0.lowercased() }
+    }
+
+    private func makeCoverageProvider() throws -> CoverageProvider? {
+        if let xcresultPath = xcresult {
+            return try XCResultProvider(path: xcresultPath)
+        }
+
+        if let profdataPath = profdata, let binaryPath = binary {
+            return try LLVMCovProvider(profdata: profdataPath, binary: binaryPath)
+        }
+
+        return nil
     }
 
     func resolvedCoverage(

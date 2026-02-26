@@ -12,13 +12,13 @@ private func bestSuffixPathMatch(for path: String, candidates: [String]) -> Stri
     for candidate in candidates where path.hasSuffix(candidate) || candidate.hasSuffix(path) {
         let trailingMatchCount = trailingPathComponentMatchCount(path, candidate)
 
-        if trailingMatchCount > bestTrailingMatchCount
-            || (trailingMatchCount == bestTrailingMatchCount && candidate.count > bestCandidateLength)
-            || (
-                trailingMatchCount == bestTrailingMatchCount
-                    && candidate.count == bestCandidateLength
-                    && (bestCandidate == nil || candidate < bestCandidate!)
-            ) {
+        if isBetterSuffixPathMatch(
+            candidate: candidate,
+            trailingMatchCount: trailingMatchCount,
+            bestCandidate: bestCandidate,
+            bestTrailingMatchCount: bestTrailingMatchCount,
+            bestCandidateLength: bestCandidateLength
+        ) {
             bestCandidate = candidate
             bestTrailingMatchCount = trailingMatchCount
             bestCandidateLength = candidate.count
@@ -26,6 +26,29 @@ private func bestSuffixPathMatch(for path: String, candidates: [String]) -> Stri
     }
 
     return bestCandidate
+}
+
+private func isBetterSuffixPathMatch(
+    candidate: String,
+    trailingMatchCount: Int,
+    bestCandidate: String?,
+    bestTrailingMatchCount: Int,
+    bestCandidateLength: Int
+) -> Bool {
+    if trailingMatchCount != bestTrailingMatchCount {
+        return trailingMatchCount > bestTrailingMatchCount
+    }
+
+    let candidateLength = candidate.count
+    if candidateLength != bestCandidateLength {
+        return candidateLength > bestCandidateLength
+    }
+
+    guard let bestCandidate else {
+        return true
+    }
+
+    return candidate < bestCandidate
 }
 
 private func trailingPathComponentMatchCount(_ lhs: String, _ rhs: String) -> Int {
@@ -80,19 +103,20 @@ final class XCResultProvider: CoverageProvider {
     private let filesByPath: [String: IndexedFile]
     private let candidatePaths: [String]
 
-    init(path: String) throws {
+    private init(indexedFilesByPath: [String: IndexedFile]) {
+        self.filesByPath = indexedFilesByPath
+        self.candidatePaths = Array(indexedFilesByPath.keys).sorted()
+    }
+
+    convenience init(path: String) throws {
         let data = try Self.runXccov(path: path)
         let report = try JSONDecoder().decode(XCCovReport.self, from: data)
-        let indexed = Self.buildIndex(from: report)
-        self.filesByPath = indexed
-        self.candidatePaths = Array(indexed.keys).sorted()
+        self.init(indexedFilesByPath: Self.buildIndex(from: report))
     }
 
     // Test-friendly initializer
-    init(report: XCCovReport) {
-        let indexed = Self.buildIndex(from: report)
-        self.filesByPath = indexed
-        self.candidatePaths = Array(indexed.keys).sorted()
+    convenience init(report: XCCovReport) {
+        self.init(indexedFilesByPath: Self.buildIndex(from: report))
     }
 
     func coverage(forFile absolutePath: String, startLine: Int, endLine: Int) -> Double? {
@@ -170,18 +194,20 @@ final class XCResultProvider: CoverageProvider {
         for target in report.targets {
             for file in target.files {
                 let normalizedPath = (file.path as NSString).standardizingPath
+                let fileCoveragePercent = file.lineCoverage * 100.0
                 var entry = mutable[normalizedPath] ?? MutableIndexedFile(
-                    fileCoveragePercent: file.lineCoverage * 100.0,
+                    fileCoveragePercent: fileCoveragePercent,
                     functionCoverageByLine: [:]
                 )
 
-                entry.fileCoveragePercent = max(entry.fileCoveragePercent, file.lineCoverage * 100.0)
+                entry.fileCoveragePercent = max(entry.fileCoveragePercent, fileCoveragePercent)
 
                 if let functions = file.functions {
                     for function in functions {
                         let coveragePercent = function.lineCoverage * 100.0
+                        let existingCoverage = entry.functionCoverageByLine[function.lineNumber] ?? coveragePercent
                         entry.functionCoverageByLine[function.lineNumber] = max(
-                            entry.functionCoverageByLine[function.lineNumber] ?? coveragePercent,
+                            existingCoverage,
                             coveragePercent
                         )
                     }
@@ -279,7 +305,12 @@ final class LLVMCovProvider: CoverageProvider {
     private let fileIndexes: [String: FileCoverageIndex]
     private let candidatePaths: [String]
 
-    init(profdata: String, binary: String) throws {
+    private init(indexes: [String: FileCoverageIndex]) {
+        self.fileIndexes = indexes
+        self.candidatePaths = Array(indexes.keys).sorted()
+    }
+
+    convenience init(profdata: String, binary: String) throws {
         let data = try Self.runLLVMCov(profdata: profdata, binary: binary)
         let export = try JSONDecoder().decode(LLVMCovExport.self, from: data)
         var indexes: [String: FileCoverageIndex] = [:]
@@ -301,19 +332,17 @@ final class LLVMCovProvider: CoverageProvider {
             }
         }
 
-        self.fileIndexes = indexes
-        self.candidatePaths = Array(indexes.keys).sorted()
+        self.init(indexes: indexes)
     }
 
     // Test-friendly initializer
-    init(fileSegments: [String: [Segment]]) {
+    convenience init(fileSegments: [String: [Segment]]) {
         var indexes: [String: FileCoverageIndex] = [:]
         for (fileName, segments) in fileSegments {
             let normalizedPath = (fileName as NSString).standardizingPath
             indexes[normalizedPath] = Self.buildFileIndex(from: segments)
         }
-        self.fileIndexes = indexes
-        self.candidatePaths = Array(indexes.keys).sorted()
+        self.init(indexes: indexes)
     }
 
     func coverage(forFile absolutePath: String, startLine: Int, endLine: Int) -> Double? {
