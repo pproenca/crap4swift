@@ -4,6 +4,45 @@ protocol CoverageProvider {
     func coverage(forFile absolutePath: String, startLine: Int, endLine: Int) -> Double?
 }
 
+private func bestSuffixPathMatch(for path: String, candidates: [String]) -> String? {
+    var bestCandidate: String?
+    var bestTrailingMatchCount = -1
+    var bestCandidateLength = -1
+
+    for candidate in candidates where path.hasSuffix(candidate) || candidate.hasSuffix(path) {
+        let trailingMatchCount = trailingPathComponentMatchCount(path, candidate)
+
+        if trailingMatchCount > bestTrailingMatchCount
+            || (trailingMatchCount == bestTrailingMatchCount && candidate.count > bestCandidateLength)
+            || (
+                trailingMatchCount == bestTrailingMatchCount
+                    && candidate.count == bestCandidateLength
+                    && (bestCandidate == nil || candidate < bestCandidate!)
+            ) {
+            bestCandidate = candidate
+            bestTrailingMatchCount = trailingMatchCount
+            bestCandidateLength = candidate.count
+        }
+    }
+
+    return bestCandidate
+}
+
+private func trailingPathComponentMatchCount(_ lhs: String, _ rhs: String) -> Int {
+    let lhsComponents = lhs.split(separator: "/")
+    let rhsComponents = rhs.split(separator: "/")
+
+    var count = 0
+    for (left, right) in zip(lhsComponents.reversed(), rhsComponents.reversed()) {
+        if left != right {
+            break
+        }
+        count += 1
+    }
+
+    return count
+}
+
 // MARK: - XCResult Coverage
 
 final class XCResultProvider: CoverageProvider {
@@ -46,14 +85,14 @@ final class XCResultProvider: CoverageProvider {
         let report = try JSONDecoder().decode(XCCovReport.self, from: data)
         let indexed = Self.buildIndex(from: report)
         self.filesByPath = indexed
-        self.candidatePaths = Array(indexed.keys)
+        self.candidatePaths = Array(indexed.keys).sorted()
     }
 
     // Test-friendly initializer
     init(report: XCCovReport) {
         let indexed = Self.buildIndex(from: report)
         self.filesByPath = indexed
-        self.candidatePaths = Array(indexed.keys)
+        self.candidatePaths = Array(indexed.keys).sorted()
     }
 
     func coverage(forFile absolutePath: String, startLine: Int, endLine: Int) -> Double? {
@@ -79,9 +118,7 @@ final class XCResultProvider: CoverageProvider {
             return exact
         }
 
-        if let match = candidatePaths.first(
-            where: { normalizedPath.hasSuffix($0) || $0.hasSuffix(normalizedPath) }
-        ) {
+        if let match = bestSuffixPathMatch(for: normalizedPath, candidates: candidatePaths) {
             return filesByPath[match]
         }
 
@@ -265,7 +302,7 @@ final class LLVMCovProvider: CoverageProvider {
         }
 
         self.fileIndexes = indexes
-        self.candidatePaths = Array(indexes.keys)
+        self.candidatePaths = Array(indexes.keys).sorted()
     }
 
     // Test-friendly initializer
@@ -276,7 +313,7 @@ final class LLVMCovProvider: CoverageProvider {
             indexes[normalizedPath] = Self.buildFileIndex(from: segments)
         }
         self.fileIndexes = indexes
-        self.candidatePaths = Array(indexes.keys)
+        self.candidatePaths = Array(indexes.keys).sorted()
     }
 
     func coverage(forFile absolutePath: String, startLine: Int, endLine: Int) -> Double? {
@@ -312,9 +349,7 @@ final class LLVMCovProvider: CoverageProvider {
             return exact
         }
 
-        if let match = candidatePaths.first(
-            where: { normalizedPath.hasSuffix($0) || $0.hasSuffix(normalizedPath) }
-        ) {
+        if let match = bestSuffixPathMatch(for: normalizedPath, candidates: candidatePaths) {
             return fileIndexes[match]
         }
 

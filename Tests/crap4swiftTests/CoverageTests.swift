@@ -59,6 +59,25 @@ final class CoverageTests: XCTestCase {
         XCTAssertNil(cov)
     }
 
+    func testXCResultAmbiguousSuffixMatchPrefersMostSpecificPath() {
+        let report = XCResultProvider.XCCovReport(
+            targets: [
+                .init(files: [
+                    .init(path: "/var/folders/x/File.swift", lineCoverage: 0.10, functions: nil),
+                    .init(path: "/private/var/folders/x/File.swift", lineCoverage: 0.90, functions: nil),
+                ])
+            ]
+        )
+        let provider = XCResultProvider(report: report)
+
+        let cov = provider.coverage(
+            forFile: "/worktree/symlink/private/var/folders/x/File.swift",
+            startLine: 1,
+            endLine: 10
+        )
+        XCTAssertEqual(cov, 90.0)
+    }
+
     // MARK: - LLVM-cov Provider Tests
 
     func testLLVMCovSegmentCoverage() {
@@ -107,5 +126,27 @@ final class CoverageTests: XCTestCase {
         // Lines 3-4: both have count=0 → 0% coverage
         let cov = provider.coverage(forFile: "/project/File.swift", startLine: 3, endLine: 4)
         XCTAssertEqual(cov, 0.0)
+    }
+
+    func testLLVMCovAmbiguousSuffixMatchPrefersMostSpecificPath() {
+        let lowCoverageSegments: [LLVMCovProvider.Segment] = [
+            .init(line: 1, column: 1, count: 0, hasCount: true, isRegionEntry: true),
+            .init(line: 3, column: 1, count: 0, hasCount: false, isRegionEntry: false),
+        ]
+        let highCoverageSegments: [LLVMCovProvider.Segment] = [
+            .init(line: 1, column: 1, count: 3, hasCount: true, isRegionEntry: true),
+            .init(line: 3, column: 1, count: 0, hasCount: false, isRegionEntry: false),
+        ]
+        let provider = LLVMCovProvider(fileSegments: [
+            "/var/folders/x/File.swift": lowCoverageSegments,
+            "/private/var/folders/x/File.swift": highCoverageSegments,
+        ])
+
+        let cov = provider.coverage(
+            forFile: "/worktree/symlink/private/var/folders/x/File.swift",
+            startLine: 1,
+            endLine: 2
+        )
+        XCTAssertEqual(cov, 100.0)
     }
 }

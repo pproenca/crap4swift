@@ -69,11 +69,12 @@ struct Crap4Swift: ParsableCommand {
                 let cc = complexityVisitor.complexity
 
                 let absolutePath = URL(fileURLWithPath: file).standardizedFileURL.path
-                let cov = coverageProvider?.coverage(
+                let cov = resolvedCoverage(
                     forFile: absolutePath,
                     startLine: funcInfo.startLine,
-                    endLine: funcInfo.endLine
-                ) ?? 100.0
+                    endLine: funcInfo.endLine,
+                    using: coverageProvider
+                )
 
                 let score = crapScore(complexity: cc, coveragePercent: cov)
                 entries.append(CrapEntry(
@@ -124,7 +125,24 @@ struct Crap4Swift: ParsableCommand {
         return patterns.map { $0.lowercased() }
     }
 
-    private func findSwiftFiles(in directory: String, excluding patterns: [String]) -> [String] {
+    func resolvedCoverage(
+        forFile absolutePath: String,
+        startLine: Int,
+        endLine: Int,
+        using coverageProvider: CoverageProvider?
+    ) -> Double {
+        guard let coverageProvider else {
+            return 100.0
+        }
+
+        return coverageProvider.coverage(
+            forFile: absolutePath,
+            startLine: startLine,
+            endLine: endLine
+        ) ?? 0.0
+    }
+
+    func findSwiftFiles(in directory: String, excluding patterns: [String]) -> [String] {
         let fm = FileManager.default
         let url = URL(fileURLWithPath: directory).standardizedFileURL
         guard let enumerator = fm.enumerator(
