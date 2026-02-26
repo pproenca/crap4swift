@@ -18,27 +18,19 @@ class FunctionFinder: SyntaxVisitor {
 
     override func visit(_ node: FunctionDeclSyntax) -> SyntaxVisitorContinueKind {
         guard node.body != nil else { return .visitChildren }
-        let name = makeFunctionName(node)
-        let start = converter.location(for: node.positionAfterSkippingLeadingTrivia).line
-        let end = converter.location(for: node.endPositionBeforeTrailingTrivia).line
-        functions.append(FunctionInfo(name: name, startLine: start, endLine: end, node: Syntax(node)))
+        appendFunction(name: makeFunctionName(node), forNode: Syntax(node))
         return .visitChildren
     }
 
     override func visit(_ node: InitializerDeclSyntax) -> SyntaxVisitorContinueKind {
         guard node.body != nil else { return .visitChildren }
-        let name = makeInitName(node)
-        let start = converter.location(for: node.positionAfterSkippingLeadingTrivia).line
-        let end = converter.location(for: node.endPositionBeforeTrailingTrivia).line
-        functions.append(FunctionInfo(name: name, startLine: start, endLine: end, node: Syntax(node)))
+        appendFunction(name: makeInitName(node), forNode: Syntax(node))
         return .visitChildren
     }
 
     override func visit(_ node: DeinitializerDeclSyntax) -> SyntaxVisitorContinueKind {
         guard node.body != nil else { return .visitChildren }
-        let start = converter.location(for: node.positionAfterSkippingLeadingTrivia).line
-        let end = converter.location(for: node.endPositionBeforeTrailingTrivia).line
-        functions.append(FunctionInfo(name: "deinit", startLine: start, endLine: end, node: Syntax(node)))
+        appendFunction(name: "deinit", forNode: Syntax(node))
         return .visitChildren
     }
 
@@ -46,10 +38,7 @@ class FunctionFinder: SyntaxVisitor {
         guard node.body != nil else { return .visitChildren }
         let accessorKind = node.accessorSpecifier.text
         let parentName = findParentName(of: Syntax(node))
-        let name = "\(parentName).\(accessorKind)"
-        let start = converter.location(for: node.positionAfterSkippingLeadingTrivia).line
-        let end = converter.location(for: node.endPositionBeforeTrailingTrivia).line
-        functions.append(FunctionInfo(name: name, startLine: start, endLine: end, node: Syntax(node)))
+        appendFunction(name: "\(parentName).\(accessorKind)", forNode: Syntax(node))
         return .visitChildren
     }
 
@@ -57,10 +46,7 @@ class FunctionFinder: SyntaxVisitor {
         // Only extract as a single function if it has an implicit getter (code block body)
         // Explicit accessor blocks are handled by AccessorDeclSyntax visits
         if case .getter = node.accessorBlock?.accessors {
-            let name = makeSubscriptName(node)
-            let start = converter.location(for: node.positionAfterSkippingLeadingTrivia).line
-            let end = converter.location(for: node.endPositionBeforeTrailingTrivia).line
-            functions.append(FunctionInfo(name: name, startLine: start, endLine: end, node: Syntax(node)))
+            appendFunction(name: makeSubscriptName(node), forNode: Syntax(node))
         }
         return .visitChildren
     }
@@ -69,31 +55,22 @@ class FunctionFinder: SyntaxVisitor {
 
     private func makeFunctionName(_ node: FunctionDeclSyntax) -> String {
         let baseName = node.name.text
-        let params = node.signature.parameterClause.parameters
-        if params.isEmpty {
-            return "\(baseName)()"
-        }
-        let labels = params.map { "\($0.firstName.text):" }
-        return "\(baseName)(\(labels.joined()))"
+        return "\(baseName)\(makeParameterClauseString(node.signature.parameterClause.parameters))"
     }
 
     private func makeInitName(_ node: InitializerDeclSyntax) -> String {
         let optMark = node.optionalMark?.text ?? ""
-        let params = node.signature.parameterClause.parameters
-        if params.isEmpty {
-            return "init\(optMark)()"
-        }
-        let labels = params.map { "\($0.firstName.text):" }
-        return "init\(optMark)(\(labels.joined()))"
+        return "init\(optMark)\(makeParameterClauseString(node.signature.parameterClause.parameters))"
     }
 
     private func makeSubscriptName(_ node: SubscriptDeclSyntax) -> String {
-        let params = node.parameterClause.parameters
-        if params.isEmpty {
-            return "subscript()"
-        }
+        return "subscript\(makeParameterClauseString(node.parameterClause.parameters))"
+    }
+
+    private func makeParameterClauseString(_ params: FunctionParameterListSyntax) -> String {
+        guard !params.isEmpty else { return "()" }
         let labels = params.map { "\($0.firstName.text):" }
-        return "subscript(\(labels.joined()))"
+        return "(\(labels.joined()))"
     }
 
     private func findParentName(of node: Syntax) -> String {
@@ -109,5 +86,11 @@ class FunctionFinder: SyntaxVisitor {
             current = parent
         }
         return "<unknown>"
+    }
+
+    private func appendFunction(name: String, forNode node: Syntax) {
+        let startLine = converter.location(for: node.positionAfterSkippingLeadingTrivia).line
+        let endLine = converter.location(for: node.endPositionBeforeTrailingTrivia).line
+        functions.append(FunctionInfo(name: name, startLine: startLine, endLine: endLine, node: node))
     }
 }
