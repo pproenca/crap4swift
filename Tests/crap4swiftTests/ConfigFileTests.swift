@@ -146,6 +146,42 @@ final class ConfigFileTests: XCTestCase {
         XCTAssertEqual(command.excludePath, ["/Vendor/", "/GeneratedSources/"])
     }
 
+    func testCLIFilterTakesPrecedenceOverConfig() throws {
+        var command = try parseCommand(["--filter", "viewDidLoad"])
+        let config = try decode("""
+        filter:
+          - init
+          - deinit
+        """)
+
+        command.applyConfig(config)
+
+        XCTAssertEqual(command.filter, ["viewDidLoad"])
+    }
+
+    func testConfigFilterAppliedWhenCLIFilterEmpty() throws {
+        var command = try parseCommand([])
+        let config = try decode("""
+        filter:
+          - setup
+        """)
+
+        command.applyConfig(config)
+
+        XCTAssertEqual(command.filter, ["setup"])
+    }
+
+    func testCLIExcludeGeneratedTakesPrecedenceOverConfig() throws {
+        var command = try parseCommand(["--exclude-generated"])
+        let config = try decode("""
+        exclude-generated: false
+        """)
+
+        command.applyConfig(config)
+
+        XCTAssertTrue(command.excludeGenerated)
+    }
+
     func testConfigCoverageIgnoredWhenCLIProvidesCoverage() throws {
         let tempDir = try makeTemporaryDirectory()
         defer { try? FileManager.default.removeItem(at: tempDir) }
