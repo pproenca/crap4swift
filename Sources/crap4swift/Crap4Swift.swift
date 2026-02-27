@@ -77,6 +77,10 @@ struct Crap4Swift: ParsableCommand {
     }
 
     mutating func run() throws {
+        if let config = ConfigFile.load() {
+            applyConfig(config)
+        }
+
         var swiftFileSet: Set<String> = []
         for directory in sourceDirectories() {
             swiftFileSet.formUnion(findSwiftFiles(in: directory, excluding: exclusionPatterns()))
@@ -276,5 +280,30 @@ struct Crap4Swift: ParsableCommand {
 
     private func shouldExclude(lowercasedPath: String, patterns: [String]) -> Bool {
         patterns.contains { lowercasedPath.contains($0) }
+    }
+
+    /// Merges config file values as defaults — CLI arguments always take precedence.
+    mutating func applyConfig(_ config: ConfigFile) {
+        if paths.isEmpty && sourceDir == nil {
+            paths = config.paths ?? []
+        }
+        if xcresult == nil && profdata == nil && binary == nil {
+            xcresult = config.xcresult
+            profdata = config.profdata
+            binary = config.binary
+        }
+        if threshold == nil {
+            threshold = config.threshold
+        }
+        if filter.isEmpty {
+            filter = config.filter ?? []
+        }
+        excludePath.append(contentsOf: config.excludePath ?? [])
+        if !excludeGenerated {
+            excludeGenerated = config.excludeGenerated ?? false
+        }
+        if !json {
+            json = config.json ?? false
+        }
     }
 }
