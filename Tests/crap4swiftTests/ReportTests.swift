@@ -1,31 +1,35 @@
-import XCTest
+import CustomDump
+import Testing
 @testable import crap4swift
 
-final class ReportTests: XCTestCase {
-
-    func testTableFormatContainsHeader() {
+@Suite("Report")
+struct ReportTests {
+    @Test("Table format contains header columns")
+    func tableFormatContainsHeader() {
         let entries = [
             makeEntry(name: "foo()", file: "Sources/A.swift", line: 1, complexity: 1, coverage: 100.0, crap: 1.0)
         ]
         let table = formatTable(entries)
-        XCTAssertTrue(table.contains("CRAP Report"))
-        XCTAssertTrue(table.contains("Function"))
-        XCTAssertTrue(table.contains("CC"))
-        XCTAssertTrue(table.contains("Cov%"))
-        XCTAssertTrue(table.contains("CRAP"))
+        #expect(table.contains("CRAP Report"))
+        #expect(table.contains("Function"))
+        #expect(table.contains("CC"))
+        #expect(table.contains("Cov%"))
+        #expect(table.contains("CRAP"))
     }
 
-    func testTableFormatContainsFunctions() {
+    @Test("Table format contains function values")
+    func tableFormatContainsFunctions() {
         let entries = [
             makeEntry(name: "foo()", file: "Sources/A.swift", line: 1, complexity: 5, coverage: 80.0, crap: 5.04)
         ]
         let table = formatTable(entries)
-        XCTAssertTrue(table.contains("foo()"))
-        XCTAssertTrue(table.contains("Sources/A.swift:1"))
-        XCTAssertTrue(table.contains("80.0%"))
+        #expect(table.contains("foo()"))
+        #expect(table.contains("Sources/A.swift:1"))
+        #expect(table.contains("80.0%"))
     }
 
-    func testDescendingSort() {
+    @Test("Sort order is descending by CRAP")
+    func descendingSort() {
         var entries = [
             makeEntry(name: "low()", file: "A.swift", line: 1, complexity: 1, coverage: 100.0, crap: 1.0),
             makeEntry(name: "high()", file: "B.swift", line: 1, complexity: 10, coverage: 0.0, crap: 110.0),
@@ -33,12 +37,11 @@ final class ReportTests: XCTestCase {
         ]
         entries.sort { $0.crap > $1.crap }
 
-        XCTAssertEqual(entries[0].name, "high()")
-        XCTAssertEqual(entries[1].name, "mid()")
-        XCTAssertEqual(entries[2].name, "low()")
+        expectNoDifference(entries.map(\.name), ["high()", "mid()", "low()"])
     }
 
-    func testThresholdFiltering() {
+    @Test("Threshold filtering keeps only entries at or above threshold")
+    func thresholdFiltering() {
         let entries = [
             makeEntry(name: "low()", file: "A.swift", line: 1, complexity: 1, coverage: 100.0, crap: 1.0),
             makeEntry(name: "high()", file: "B.swift", line: 1, complexity: 10, coverage: 0.0, crap: 110.0),
@@ -46,24 +49,26 @@ final class ReportTests: XCTestCase {
         ]
         let threshold = 10.0
         let filtered = entries.filter { $0.crap >= threshold }
-        XCTAssertEqual(filtered.count, 2)
-        XCTAssertTrue(filtered.allSatisfy { $0.crap >= threshold })
+        #expect(filtered.count == 2)
+        #expect(filtered.allSatisfy { $0.crap >= threshold })
     }
 
-    func testJSONOutput() {
+    @Test("JSON output contains expected keys and values")
+    func jsonOutput() {
         let entries = [
             makeEntry(name: "foo()", file: "A.swift", line: 1, complexity: 3, coverage: 50.0, crap: 4.125),
         ]
         let json = formatJSON(entries)
-        XCTAssertTrue(json.contains("\"name\""))
-        XCTAssertTrue(json.contains("foo()"))
-        XCTAssertTrue(json.contains("\"complexity\""))
-        XCTAssertTrue(json.contains("\"crap\""))
+        #expect(json.contains("\"name\""))
+        #expect(json.contains("foo()"))
+        #expect(json.contains("\"complexity\""))
+        #expect(json.contains("\"crap\""))
     }
 
-    func testEmptyEntries() {
+    @Test("Empty entries format to no-functions message")
+    func emptyEntries() {
         let table = formatTable([])
-        XCTAssertEqual(table, "No functions found.")
+        expectNoDifference(table, "No functions found.")
     }
 
     private func makeEntry(
