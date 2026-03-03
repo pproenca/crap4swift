@@ -1,3 +1,5 @@
+import Dependencies
+import DependenciesTestSupport
 import Foundation
 import XCTest
 import Yams
@@ -90,6 +92,23 @@ final class ConfigFileTests: XCTestCase {
         XCTAssertNotNil(config)
         XCTAssertEqual(config?.paths, ["Sources"])
         XCTAssertEqual(config?.threshold, 25)
+    }
+
+    func testLoadCanUseOverriddenDataLoaderDependency() {
+        let yaml = """
+        paths:
+          - Sources
+        threshold: 17
+        """
+
+        let config = withDependencies {
+            $0.dataLoader.load = { (_: URL) in Data(yaml.utf8) }
+        } operation: {
+            ConfigFile.load(from: "/path/that/does/not/need/to/exist")
+        }
+
+        XCTAssertEqual(config?.paths, ["Sources"])
+        XCTAssertEqual(config?.threshold, 17)
     }
 
     // MARK: - Config Merging (applyConfig)

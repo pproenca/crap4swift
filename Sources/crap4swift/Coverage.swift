@@ -1,3 +1,4 @@
+import Dependencies
 import Foundation
 
 protocol CoverageProvider {
@@ -236,22 +237,21 @@ final class XCResultProvider: CoverageProvider {
     }
 
     private static func runXccov(path: String) throws -> Data {
-        let process = Process()
-        let pipe = Pipe()
-        process.executableURL = URL(fileURLWithPath: "/usr/bin/xcrun")
-        process.arguments = ["xccov", "view", "--report", "--json", path]
-        process.standardOutput = pipe
-        process.standardError = pipe
-        try process.run()
-        let output = pipe.fileHandleForReading.readDataToEndOfFile()
-        process.waitUntilExit()
+        let result = try DependencyBridge().processClient.run(
+            URL(fileURLWithPath: "/usr/bin/xcrun"),
+            ["xccov", "view", "--report", "--json", path]
+        )
 
-        guard process.terminationStatus == 0 else {
-            let outputText = String(data: output, encoding: .utf8) ?? "<non-UTF8 xccov output>"
-            throw CoverageError.xccovFailed(status: process.terminationStatus, output: outputText)
+        guard result.terminationStatus == 0 else {
+            let outputText = String(data: result.output, encoding: .utf8) ?? "<non-UTF8 xccov output>"
+            throw CoverageError.xccovFailed(status: result.terminationStatus, output: outputText)
         }
-        return output
+        return result.output
     }
+}
+
+private struct DependencyBridge {
+    @Dependency(\.processClient) var processClient
 }
 
 // MARK: - LLVM-cov Coverage
@@ -392,44 +392,18 @@ final class LLVMCovProvider: CoverageProvider {
     }
 
     private static func buildFileIndex(from segments: [Segment]) -> FileCoverageIndex {
-        guard !segments.isEmpty else {
-            return FileCoverageIndex(maxLine: 0, instrumentedPrefix: [0], coveredPrefix: [0])
-        }
-
         let sorted = segments.sorted { ($0.line, $0.column) < ($1.line, $1.column) }
-
-        var instrumentedLines: Set<Int> = []
-        var coveredLines: Set<Int> = []
-
-        for index in sorted.indices {
-            let segment = sorted[index]
-            guard segment.hasCount else {
-                continue
-            }
-
-            let nextLine = (index + 1 < sorted.count) ? sorted[index + 1].line : (segment.line + 1)
-            let startLine = max(segment.line, 1)
-            let endLine = max(nextLine, startLine + 1)
-
-            for line in startLine..<endLine {
-                instrumentedLines.insert(line)
-                if segment.count > 0 {
-                    coveredLines.insert(line)
-                }
-            }
-        }
+        let (instrumentedLines, coveredLines) = coverageLineSets(from: sorted)
 
         guard let maxLine = instrumentedLines.max() else {
             return FileCoverageIndex(maxLine: 0, instrumentedPrefix: [0], coveredPrefix: [0])
         }
 
-        var instrumentedPrefix = Array(repeating: 0, count: maxLine + 1)
-        var coveredPrefix = Array(repeating: 0, count: maxLine + 1)
-
-        for line in 1...maxLine {
-            instrumentedPrefix[line] = instrumentedPrefix[line - 1] + (instrumentedLines.contains(line) ? 1 : 0)
-            coveredPrefix[line] = coveredPrefix[line - 1] + (coveredLines.contains(line) ? 1 : 0)
-        }
+        let (instrumentedPrefix, coveredPrefix) = prefixCoverageCounts(
+            maxLine: maxLine,
+            instrumentedLines: instrumentedLines,
+            coveredLines: coveredLines
+        )
 
         return FileCoverageIndex(
             maxLine: maxLine,
@@ -438,22 +412,71 @@ final class LLVMCovProvider: CoverageProvider {
         )
     }
 
-    private static func runLLVMCov(profdata: String, binary: String) throws -> Data {
-        let process = Process()
-        let pipe = Pipe()
-        process.executableURL = URL(fileURLWithPath: "/usr/bin/xcrun")
-        process.arguments = ["llvm-cov", "export", "-instr-profile=\(profdata)", binary, "--format=text"]
-        process.standardOutput = pipe
-        process.standardError = pipe
-        try process.run()
-        let output = pipe.fileHandleForReading.readDataToEndOfFile()
-        process.waitUntilExit()
+    private static func coverageLineSets(from sortedSegments: [Segment]) -> (instrumented: Set<Int>, covered: Set<Int>) {
+        var instrumentedLines: Set<Int> = []
+        var coveredLines: Set<Int> = []
 
-        guard process.terminationStatus == 0 else {
-            let outputText = String(data: output, encoding: .utf8) ?? "<non-UTF8 llvm-cov output>"
-            throw CoverageError.llvmCovFailed(status: process.terminationStatus, output: outputText)
+        for index in sortedSegments.indices {
+            guard let lineRange = coveredLineRange(in: sortedSegments, at: index) else {
+                continue
+            }
+
+            for line in lineRange {
+                instrumentedLines.insert(line)
+                if sortedSegments[index].count > 0 {
+                    coveredLines.insert(line)
+                }
+            }
         }
-        return output
+
+        return (instrumentedLines, coveredLines)
+    }
+
+    private static func coveredLineRange(in sortedSegments: [Segment], at index: Int) -> Range<Int>? {
+        let segment = sortedSegments[index]
+        guard segment.hasCount else {
+            return nil
+        }
+
+        let nextLine = index + 1 < sortedSegments.count
+            ? sortedSegments[index + 1].line
+            : segment.line + 1
+        let startLine = max(segment.line, 1)
+        let endLine = max(nextLine, startLine + 1)
+        return startLine..<endLine
+    }
+
+    private static func prefixCoverageCounts(
+        maxLine: Int,
+        instrumentedLines: Set<Int>,
+        coveredLines: Set<Int>
+    ) -> (instrumented: [Int], covered: [Int]) {
+        var instrumentedPrefix = Array(repeating: 0, count: maxLine + 1)
+        var coveredPrefix = Array(repeating: 0, count: maxLine + 1)
+
+        for line in 1...maxLine {
+            instrumentedPrefix[line] = instrumentedPrefix[line - 1] + lineCount(for: line, in: instrumentedLines)
+            coveredPrefix[line] = coveredPrefix[line - 1] + lineCount(for: line, in: coveredLines)
+        }
+
+        return (instrumentedPrefix, coveredPrefix)
+    }
+
+    private static func lineCount(for line: Int, in lines: Set<Int>) -> Int {
+        lines.contains(line) ? 1 : 0
+    }
+
+    private static func runLLVMCov(profdata: String, binary: String) throws -> Data {
+        let result = try DependencyBridge().processClient.run(
+            URL(fileURLWithPath: "/usr/bin/xcrun"),
+            ["llvm-cov", "export", "-instr-profile=\(profdata)", binary, "--format=text"]
+        )
+
+        guard result.terminationStatus == 0 else {
+            let outputText = String(data: result.output, encoding: .utf8) ?? "<non-UTF8 llvm-cov output>"
+            throw CoverageError.llvmCovFailed(status: result.terminationStatus, output: outputText)
+        }
+        return result.output
     }
 }
 

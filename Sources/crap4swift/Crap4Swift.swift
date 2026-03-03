@@ -48,105 +48,22 @@ struct Crap4Swift: ParsableCommand {
     var json: Bool = false
 
     mutating func validate() throws {
-        if sourceDir != nil && !paths.isEmpty {
-            throw ValidationError("Use either path operands or --source-dir, not both.")
-        }
-
-        if xcresult != nil && (profdata != nil || binary != nil) {
-            throw ValidationError("Use either --xcresult or --profdata/--binary, not both.")
-        }
-        if (profdata == nil) != (binary == nil) {
-            throw ValidationError("--profdata and --binary must be provided together.")
-        }
-
-        if let threshold {
-            if !threshold.isFinite {
-                throw ValidationError("--threshold must be a finite number.")
-            }
-            if threshold < 0 {
-                throw ValidationError("--threshold must be greater than or equal to 0.")
-            }
-        }
-
-        if excludePath.contains(where: \.isEmpty) {
-            throw ValidationError("--exclude-path cannot be empty.")
-        }
-
+        try validateSourceSelection()
+        try validateCoverageSelection()
+        try validateThresholdOption()
+        try validateExcludePaths()
         try validateDirectories(sourceDirectories())
         try validateCoveragePaths()
     }
 
     mutating func run() throws {
-        if let config = ConfigFile.load() {
-            applyConfig(config)
-        }
-
-        var swiftFileSet: Set<String> = []
-        for directory in sourceDirectories() {
-            swiftFileSet.formUnion(findSwiftFiles(in: directory, excluding: exclusionPatterns()))
-        }
-        let swiftFiles = swiftFileSet.sorted()
-
-        guard !swiftFiles.isEmpty else {
-            throw ValidationError("No .swift files found in the selected path(s).")
-        }
-
+        applyConfigIfPresent()
+        let swiftFiles = try discoverSwiftFiles()
         let coverageProvider = try makeCoverageProvider()
-
-        var entries: [CrapEntry] = []
-
-        for file in swiftFiles {
-            let source = try String(contentsOfFile: file, encoding: .utf8)
-            let tree = Parser.parse(source: source)
-            let converter = SourceLocationConverter(fileName: file, tree: tree)
-
-            let finder = FunctionFinder(converter: converter)
-            finder.walk(tree)
-
-            for funcInfo in finder.functions {
-                let complexityVisitor = ComplexityVisitor(viewMode: .sourceAccurate)
-                complexityVisitor.walk(funcInfo.node)
-                let cc = complexityVisitor.complexity
-
-                let absolutePath = URL(fileURLWithPath: file).standardizedFileURL.path
-                let cov = resolvedCoverage(
-                    forFile: absolutePath,
-                    startLine: funcInfo.startLine,
-                    endLine: funcInfo.endLine,
-                    using: coverageProvider
-                )
-
-                let score = crapScore(complexity: cc, coveragePercent: cov)
-                entries.append(CrapEntry(
-                    name: funcInfo.name,
-                    file: file,
-                    line: funcInfo.startLine,
-                    complexity: cc,
-                    coverage: cov,
-                    crap: score
-                ))
-            }
-        }
-
-        // Apply filters
-        if !filter.isEmpty {
-            entries = entries.filter { entry in
-                filter.contains { entry.name.contains($0) }
-            }
-        }
-        if let threshold = threshold {
-            entries = entries.filter { $0.crap >= threshold }
-        }
-
-        // Sort by CRAP score descending
+        var entries = try analyzeEntries(in: swiftFiles, using: coverageProvider)
+        entries = filteredEntries(entries)
         entries.sort { $0.crap > $1.crap }
-
-        // Output
-        if json {
-            print(formatJSON(entries))
-        } else {
-            print(formatTable(entries))
-        }
+        output(entries)
     }
 
     func sourceDirectories() -> [String] {
@@ -284,24 +201,173 @@ struct Crap4Swift: ParsableCommand {
 
     /// Merges config file values as defaults — CLI arguments always take precedence.
     mutating func applyConfig(_ config: ConfigFile) {
-        if paths.isEmpty && sourceDir == nil {
-            paths = config.paths ?? []
+        applyPathDefaults(from: config)
+        applyCoverageDefaults(from: config)
+        applyThresholdDefault(from: config)
+        applyFilterDefault(from: config)
+        excludePath.append(contentsOf: config.excludePath ?? [])
+        applyExcludeGeneratedDefault(from: config)
+        applyJSONDefault(from: config)
+    }
+
+    private func validateSourceSelection() throws {
+        if sourceDir != nil && !paths.isEmpty {
+            throw ValidationError("Use either path operands or --source-dir, not both.")
         }
-        if xcresult == nil && profdata == nil && binary == nil {
-            xcresult = config.xcresult
-            profdata = config.profdata
-            binary = config.binary
+    }
+
+    private func validateCoverageSelection() throws {
+        if xcresult != nil && (profdata != nil || binary != nil) {
+            throw ValidationError("Use either --xcresult or --profdata/--binary, not both.")
         }
+        if (profdata == nil) != (binary == nil) {
+            throw ValidationError("--profdata and --binary must be provided together.")
+        }
+    }
+
+    private func validateThresholdOption() throws {
+        guard let threshold else {
+            return
+        }
+        if !threshold.isFinite {
+            throw ValidationError("--threshold must be a finite number.")
+        }
+        if threshold < 0 {
+            throw ValidationError("--threshold must be greater than or equal to 0.")
+        }
+    }
+
+    private func validateExcludePaths() throws {
+        if excludePath.contains(where: \.isEmpty) {
+            throw ValidationError("--exclude-path cannot be empty.")
+        }
+    }
+
+    private mutating func applyConfigIfPresent() {
+        if let config = ConfigFile.load() {
+            applyConfig(config)
+        }
+    }
+
+    private func discoverSwiftFiles() throws -> [String] {
+        var swiftFileSet: Set<String> = []
+        for directory in sourceDirectories() {
+            swiftFileSet.formUnion(findSwiftFiles(in: directory, excluding: exclusionPatterns()))
+        }
+
+        let swiftFiles = swiftFileSet.sorted()
+        guard !swiftFiles.isEmpty else {
+            throw ValidationError("No .swift files found in the selected path(s).")
+        }
+
+        return swiftFiles
+    }
+
+    private func analyzeEntries(in swiftFiles: [String], using coverageProvider: CoverageProvider?) throws -> [CrapEntry] {
+        var entries: [CrapEntry] = []
+
+        for file in swiftFiles {
+            let source = try String(contentsOfFile: file, encoding: .utf8)
+            entries.append(contentsOf: analyzeFile(source: source, path: file, using: coverageProvider))
+        }
+
+        return entries
+    }
+
+    private func analyzeFile(source: String, path file: String, using coverageProvider: CoverageProvider?) -> [CrapEntry] {
+        let tree = Parser.parse(source: source)
+        let converter = SourceLocationConverter(fileName: file, tree: tree)
+        let finder = FunctionFinder(converter: converter)
+        finder.walk(tree)
+
+        var entries: [CrapEntry] = []
+
+        for function in finder.functions {
+            let visitor = ComplexityVisitor(viewMode: .sourceAccurate)
+            visitor.walk(function.node)
+
+            let absolutePath = URL(fileURLWithPath: file).standardizedFileURL.path
+            let coverage = resolvedCoverage(
+                forFile: absolutePath,
+                startLine: function.startLine,
+                endLine: function.endLine,
+                using: coverageProvider
+            )
+
+            entries.append(
+                CrapEntry(
+                    name: function.name,
+                    file: file,
+                    line: function.startLine,
+                    complexity: visitor.complexity,
+                    coverage: coverage,
+                    crap: crapScore(complexity: visitor.complexity, coveragePercent: coverage)
+                )
+            )
+        }
+
+        return entries
+    }
+
+    private func filteredEntries(_ entries: [CrapEntry]) -> [CrapEntry] {
+        var filtered = entries
+
+        if !filter.isEmpty {
+            filtered = filtered.filter { entry in
+                filter.contains { entry.name.contains($0) }
+            }
+        }
+
+        if let threshold {
+            filtered = filtered.filter { $0.crap >= threshold }
+        }
+
+        return filtered
+    }
+
+    private func output(_ entries: [CrapEntry]) {
+        if json {
+            print(formatJSON(entries))
+            return
+        }
+        print(formatTable(entries))
+    }
+
+    private mutating func applyPathDefaults(from config: ConfigFile) {
+        guard paths.isEmpty && sourceDir == nil else {
+            return
+        }
+        paths = config.paths ?? []
+    }
+
+    private mutating func applyCoverageDefaults(from config: ConfigFile) {
+        guard xcresult == nil && profdata == nil && binary == nil else {
+            return
+        }
+        xcresult = config.xcresult
+        profdata = config.profdata
+        binary = config.binary
+    }
+
+    private mutating func applyThresholdDefault(from config: ConfigFile) {
         if threshold == nil {
             threshold = config.threshold
         }
+    }
+
+    private mutating func applyFilterDefault(from config: ConfigFile) {
         if filter.isEmpty {
             filter = config.filter ?? []
         }
-        excludePath.append(contentsOf: config.excludePath ?? [])
+    }
+
+    private mutating func applyExcludeGeneratedDefault(from config: ConfigFile) {
         if !excludeGenerated {
             excludeGenerated = config.excludeGenerated ?? false
         }
+    }
+
+    private mutating func applyJSONDefault(from config: ConfigFile) {
         if !json {
             json = config.json ?? false
         }

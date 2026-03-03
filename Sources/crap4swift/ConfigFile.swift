@@ -1,3 +1,4 @@
+import Dependencies
 import Foundation
 import Yams
 
@@ -28,9 +29,13 @@ struct ConfigFile: Decodable {
     static func load(from directory: String = ".") -> ConfigFile? {
         let url = URL(fileURLWithPath: directory)
             .appendingPathComponent(".crap4swift.yml")
-        guard let data = try? Data(contentsOf: url) else {
+        guard let data = try? DependencyBridge().dataLoader.load(url) else {
             return nil
         }
         return try? YAMLDecoder().decode(ConfigFile.self, from: data)
     }
+}
+
+private struct DependencyBridge {
+    @Dependency(\.dataLoader) var dataLoader
 }
